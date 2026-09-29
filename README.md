@@ -18,21 +18,27 @@ PoliPicks is meant for:
 
 | Source | Contents | Role |
 |---|---|---|
-| [House Clerk financial disclosures](https://disclosures-clerk.house.gov/FinancialDisclosure) | One ZIP per filing year: XML index plus filing documents | Training history, 2021–2026 (about 24 quarters) |
-| Tracefour API | Keyless REST API over STOCK Act disclosures, refreshed hourly, rolling six-month window | Recent filings, without PDF parsing |
+| [congressional-stock-trades](https://huggingface.co/datasets/austin-starks/congressional-stock-trades) | House and Senate Periodic Transaction Reports already extracted from the official filings (electronic and scanned), with bioguide IDs, tickers, amount ranges and amendment history; refreshed about every 20 hours | Transactions, 2021–2026 (about 24 quarters) |
 | [congress-legislators](https://github.com/unitedstates/congress-legislators) | Committee assignments, party, state, chamber, tenure | Member features |
 | Hand-written CSV | ~20 House committees → GICS sectors | Committee–sector mapping |
 | yfinance | Sector per ticker, fetched once and cached | Ticker → sector |
 
 All sources join on bioguide ID. Labels come from the filings themselves: the set of sectors a member traded in a given quarter.
 
+We use the dataset instead of parsing the House Clerk PDFs ourselves. We checked a random sample of 50 filings against the Clerk's PDFs: every source PDF matched the dataset's SHA-256, and every row in the 40 electronic filings matched an independent parse. Rows from scanned filings are model-read and can misread the day of the month, which doesn't affect quarterly labels. The data is restricted to non-commercial use under 5 U.S.C. 13107(c) (see the dataset's `LICENSE_DATA.md`).
+
+To get it:
+
+```bash
+git clone https://huggingface.co/datasets/austin-starks/congressional-stock-trades
+```
+
 ## Pipeline
 
-1. Download the annual ZIPs and parse the XML index into a filing table.
-2. Keep Periodic Transaction Reports and parse them into a transaction table (pdfplumber).
-3. Resolve members against the legislators file.
-4. Map tickers to sectors.
-5. Aggregate to one row per member-quarter. Features come strictly from before the label quarter.
+1. Load `political_trade_events` (one row per trade, with repeated reports merged) and keep House members.
+2. Map tickers to sectors. Scanned filings have no asset-type code and sometimes no ticker, so those rows are matched on asset name.
+3. Aggregate to one row per member-quarter. Features use only trades with `availableAt` before the label quarter.
+4. Weight or cap per member where row counts matter: two members account for over half of all House rows.
 
 Slow steps are cached so they run once. Storage and processing use pandas and DuckDB.
 

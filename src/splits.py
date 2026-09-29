@@ -1,10 +1,18 @@
 import pandas as pd
 
+from config.model_config import (
+    PREDICTION_WINDOW_DAYS,
+    DATE_COLUMN
+)
 
-def walk_forward_splits(df, date_column="prediction_date"):
+
+def walk_forward_splits(df):
 
     df = df.copy()
-    df[date_column] = pd.to_datetime(df[date_column])
+
+    df[DATE_COLUMN] = pd.to_datetime(
+        df[DATE_COLUMN]
+    )
 
     validation_periods = [
         ("2023-01-01", "2023-12-31"),
@@ -20,15 +28,17 @@ def walk_forward_splits(df, date_column="prediction_date"):
         val_start = pd.Timestamp(val_start)
         val_end = pd.Timestamp(val_end)
 
-        train_end = val_start - pd.Timedelta(days=21)
+        train_end = val_start - pd.Timedelta(
+            days=PREDICTION_WINDOW_DAYS
+        )
 
         train_df = df[
-            df[date_column] < train_end
+            df[DATE_COLUMN] < train_end
         ].copy()
 
         val_df = df[
-            (df[date_column] >= val_start)
-            & (df[date_column] <= val_end)
+            (df[DATE_COLUMN] >= val_start)
+            & (df[DATE_COLUMN] <= val_end)
         ].copy()
 
         folds.append({

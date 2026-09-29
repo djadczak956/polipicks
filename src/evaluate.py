@@ -7,8 +7,14 @@ from sklearn.metrics import (
     f1_score
 )
 
+from config.model_config import THRESHOLD
 
-def evaluate_model(model, dataloader, device, threshold=0.5):
+
+def evaluate_model(
+    model,
+    dataloader,
+    device
+):
 
     model.eval()
 
@@ -23,10 +29,12 @@ def evaluate_model(model, dataloader, device, threshold=0.5):
 
             logits = model(features)
 
-            probabilities = torch.sigmoid(logits)
+            probabilities = torch.sigmoid(
+                logits
+            )
 
             predictions = (
-                probabilities >= threshold
+                probabilities >= THRESHOLD
             ).int()
 
             targets_list.append(

@@ -3,21 +3,20 @@ import torch
 from torch.utils.data import DataLoader
 from sklearn.preprocessing import StandardScaler
 
-from config import (
+from config.model_config import (
     FEATURE_COLUMNS,
-    SECTOR_COLUMNS,
+    TARGET_COLUMNS,
     BATCH_SIZE,
     LEARNING_RATE,
     WEIGHT_DECAY,
-    EPOCHS,
-    THRESHOLD
+    EPOCHS
 )
 
-from dataset import PoliPickDataset
-from model import PoliPickModel
-from splits import walk_forward_splits
-from train import train_model
-from evaluate import evaluate_model
+from src.dataset import PoliPickDataset
+from src.model import PoliPickModel
+from src.splits import walk_forward_splits
+from src.train import train_model
+from src.evaluate import evaluate_model
 
 
 def run_walk_forward(df):
@@ -30,7 +29,10 @@ def run_walk_forward(df):
 
     folds = walk_forward_splits(df)
 
-    for fold_number, fold in enumerate(folds, start=1):
+    for fold_number, fold in enumerate(
+        folds,
+        start=1
+    ):
 
         print(f"\nFold {fold_number}")
 
@@ -39,24 +41,24 @@ def run_walk_forward(df):
 
         scaler = StandardScaler()
 
-        train_df[FEATURE_COLUMNS] = scaler.fit_transform(
-            train_df[FEATURE_COLUMNS]
+        train_df[FEATURE_COLUMNS] = (
+            scaler.fit_transform(
+                train_df[FEATURE_COLUMNS]
+            )
         )
 
-        val_df[FEATURE_COLUMNS] = scaler.transform(
-            val_df[FEATURE_COLUMNS]
+        val_df[FEATURE_COLUMNS] = (
+            scaler.transform(
+                val_df[FEATURE_COLUMNS]
+            )
         )
 
         train_dataset = PoliPickDataset(
-            train_df,
-            FEATURE_COLUMNS,
-            SECTOR_COLUMNS
+            train_df
         )
 
         val_dataset = PoliPickDataset(
-            val_df,
-            FEATURE_COLUMNS,
-            SECTOR_COLUMNS
+            val_df
         )
 
         train_loader = DataLoader(
@@ -73,7 +75,7 @@ def run_walk_forward(df):
 
         model = PoliPickModel(
             input_size=len(FEATURE_COLUMNS),
-            num_sectors=len(SECTOR_COLUMNS)
+            num_sectors=len(TARGET_COLUMNS)
         ).to(device)
 
         optimizer = torch.optim.Adam(
@@ -93,8 +95,7 @@ def run_walk_forward(df):
         precision, recall, f1 = evaluate_model(
             model,
             val_loader,
-            device,
-            THRESHOLD
+            device
         )
 
         print(f"Precision: {precision:.4f}")
@@ -104,5 +105,5 @@ def run_walk_forward(df):
 
 # Later:
 #
-# df = your_prepared_dataframe
+# df = prepared_dataframe
 # run_walk_forward(df)

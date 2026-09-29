@@ -1,18 +1,23 @@
 import torch
 from torch.utils.data import Dataset
 
+from config.model_config import (
+    FEATURE_COLUMNS,
+    TARGET_COLUMNS
+)
+
 
 class PoliPickDataset(Dataset):
 
-    def __init__(self, dataframe, feature_columns, target_columns):
+    def __init__(self, dataframe):
 
         self.features = torch.tensor(
-            dataframe[feature_columns].values,
+            dataframe[FEATURE_COLUMNS].values,
             dtype=torch.float32
         )
 
         self.targets = torch.tensor(
-            dataframe[target_columns].values,
+            dataframe[TARGET_COLUMNS].values,
             dtype=torch.float32
         )
 

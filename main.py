@@ -1,3 +1,4 @@
+import pandas as pd
 import torch
 
 from torch.utils.data import DataLoader
@@ -19,25 +20,46 @@ from src.train import train_model
 from src.evaluate import evaluate_model
 
 
+def get_device():
+
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+
+    return torch.device("cpu")
+
+
 def run_walk_forward(df):
 
-    device = torch.device(
-        "cuda"
-        if torch.cuda.is_available()
-        else "cpu"
-    )
+    device = get_device()
+
+    print(f"Using device: {device}")
+    print(f"Total model rows: {len(df)}")
 
     folds = walk_forward_splits(df)
+
+    print(f"Walk-forward folds: {len(folds)}")
 
     for fold_number, fold in enumerate(
         folds,
         start=1
     ):
 
-        print(f"\nFold {fold_number}")
+        print(f"\n----------------------")
+        print(f"Fold {fold_number}")
+        print(f"----------------------")
 
         train_df = fold["train"].copy()
         val_df = fold["validation"].copy()
+
+        print(f"Training rows: {len(train_df)}")
+        print(f"Validation rows: {len(val_df)}")
+
+        if train_df.empty or val_df.empty:
+            print("Skipping fold because dataset is empty.")
+            continue
 
         scaler = StandardScaler()
 
@@ -64,7 +86,8 @@ def run_walk_forward(df):
         train_loader = DataLoader(
             train_dataset,
             batch_size=BATCH_SIZE,
-            shuffle=True
+            shuffle=True,
+            drop_last=True
         )
 
         val_loader = DataLoader(
@@ -98,12 +121,22 @@ def run_walk_forward(df):
             device
         )
 
+        print()
         print(f"Precision: {precision:.4f}")
-        print(f"Recall: {recall:.4f}")
-        print(f"F1: {f1:.4f}")
+        print(f"Recall:    {recall:.4f}")
+        print(f"F1:        {f1:.4f}")
 
 
-# Later:
-#
-# df = prepared_dataframe
-# run_walk_forward(df)
+def main():
+
+    print("Loading model data...")
+
+    df = pd.read_parquet(
+        "data/processed/model_data.parquet"
+    )
+
+    run_walk_forward(df)
+
+
+if __name__ == "__main__":
+    main()

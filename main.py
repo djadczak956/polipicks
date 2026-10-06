@@ -1,34 +1,16 @@
 import pandas as pd
-import torch
 
 from torch.utils.data import DataLoader
-from sklearn.preprocessing import StandardScaler
 
 from config.model_config import (
     FEATURE_COLUMNS,
-    TARGET_COLUMNS,
-    BATCH_SIZE,
-    LEARNING_RATE,
-    WEIGHT_DECAY,
-    EPOCHS
+    BATCH_SIZE
 )
 
 from src.dataset import PoliPickDataset
-from src.model import PoliPickModel
 from src.splits import walk_forward_splits
-from src.train import train_model
+from src.train import fit_fold, get_device
 from src.evaluate import evaluate_model
-
-
-def get_device():
-
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-
-    return torch.device("cpu")
 
 
 def run_walk_forward(df):
@@ -61,12 +43,9 @@ def run_walk_forward(df):
             print("Skipping fold because dataset is empty.")
             continue
 
-        scaler = StandardScaler()
-
-        train_df[FEATURE_COLUMNS] = (
-            scaler.fit_transform(
-                train_df[FEATURE_COLUMNS]
-            )
+        model, scaler = fit_fold(
+            train_df,
+            device
         )
 
         val_df[FEATURE_COLUMNS] = (
@@ -75,44 +54,10 @@ def run_walk_forward(df):
             )
         )
 
-        train_dataset = PoliPickDataset(
-            train_df
-        )
-
-        val_dataset = PoliPickDataset(
-            val_df
-        )
-
-        train_loader = DataLoader(
-            train_dataset,
-            batch_size=BATCH_SIZE,
-            shuffle=True,
-            drop_last=True
-        )
-
         val_loader = DataLoader(
-            val_dataset,
+            PoliPickDataset(val_df),
             batch_size=BATCH_SIZE,
             shuffle=False
-        )
-
-        model = PoliPickModel(
-            input_size=len(FEATURE_COLUMNS),
-            num_sectors=len(TARGET_COLUMNS)
-        ).to(device)
-
-        optimizer = torch.optim.Adam(
-            model.parameters(),
-            lr=LEARNING_RATE,
-            weight_decay=WEIGHT_DECAY
-        )
-
-        train_model(
-            model,
-            train_loader,
-            optimizer,
-            device,
-            EPOCHS
         )
 
         precision, recall, f1 = evaluate_model(

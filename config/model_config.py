@@ -55,3 +55,8 @@ LEARNING_RATE = 0.001
 WEIGHT_DECAY = 1e-4
 EPOCHS = 30
 THRESHOLD = 0.5
+ANOMALY_ALPHAS = [1.0, 2.0, 5.0, 10.0, 20.0]
+ANOMALY_TEST_START = "2023-01-01"
+# Fixed by definition, not tuned: the injection test can't judge what counts as routine.
+ROUTINE_WINDOW_DAYS = 365
+ROUTINE_MIN_TRADES = 3

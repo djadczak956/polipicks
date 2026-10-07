@@ -36,6 +36,9 @@ OUT = (
     ROOT / "data/processed/model_data.parquet"
 )
 
+# STOCK Act: trades must be disclosed within 45 days.
+DISCLOSURE_DEADLINE_DAYS = 45
+
 
 SECTOR_NAME_MAP = {
     "communication services":
@@ -168,6 +171,84 @@ def build_first_term_lookup():
     return first_terms
 
 
+def verify_no_leakage(model_df, trades):
+
+    # Recompute features and targets for every row a second, vectorized
+    # way and require an exact match. Features may only count trades that
+    # were public before the prediction date; targets only trades made in
+    # [prediction_date, prediction_date + window).
+    pairs = model_df[
+        ["memberId", "prediction_date"]
+    ].merge(
+        trades[
+            ["memberId", "td", "available_at", "sector"]
+        ],
+        on="memberId"
+    )
+
+    p = pairs["prediction_date"]
+
+    known = pairs["available_at"] < p
+
+    checks = {
+        "trades_last_365d":
+            known
+            & (pairs["available_at"] >= p - pd.Timedelta(days=365)),
+        "trades_last_90d":
+            known
+            & (pairs["available_at"] >= p - pd.Timedelta(days=90)),
+        "trades_last_21d":
+            known
+            & (pairs["available_at"] >= p - pd.Timedelta(days=21)),
+    }
+
+    keys = ["memberId", "prediction_date"]
+
+    for column, mask in checks.items():
+
+        expected = (
+            mask.groupby([pairs[k] for k in keys]).sum()
+            .reindex(pd.MultiIndex.from_frame(model_df[keys]))
+            .fillna(0)
+            .to_numpy()
+        )
+
+        assert (model_df[column].to_numpy() == expected).all(), (
+            f"LEAKAGE CHECK FAILED: {column} does not match "
+            "trades disclosed before prediction_date"
+        )
+
+    in_window = (
+        (pairs["td"] >= p)
+        & (pairs["td"] < p + pd.Timedelta(days=PREDICTION_WINDOW_DAYS))
+    )
+
+    traded = (
+        pairs[in_window]
+        .groupby(keys + ["sector"])
+        .size()
+        .gt(0)
+        .unstack(fill_value=False)
+        .reindex(pd.MultiIndex.from_frame(model_df[keys]), fill_value=False)
+    )
+
+    for sector in SECTORS:
+
+        expected = (
+            traded[sector].to_numpy()
+            if sector in traded.columns
+            else 0
+        )
+
+        assert (
+            model_df[f"target_{sector}"].to_numpy() == expected
+        ).all(), f"TARGET CHECK FAILED: target_{sector}"
+
+    print(
+        f"leakage check passed for {len(model_df)} rows"
+    )
+
+
 def main():
 
     trades = pd.read_parquet(
@@ -202,6 +283,13 @@ def main():
         trades["td"]
     )
 
+    # When each trade became public. History features use this, not td:
+    # the median trade is disclosed ~28 days after it happens, which is
+    # longer than the prediction window.
+    trades["available_at"] = pd.to_datetime(
+        trades["available_at"]
+    )
+
     trades["sector"] = (
         trades["sector"]
         .apply(normalize_sector)
@@ -225,10 +313,16 @@ def main():
 
     first_date = trades["td"].min()
 
+    # Trades made shortly before the data was pulled are mostly not
+    # disclosed yet, so late target windows would be undercounted.
+    # Stop where the whole target window is past the 45-day deadline.
+    data_pulled_at = trades["available_at"].max()
+
     last_possible_date = (
-        trades["td"].max()
+        data_pulled_at
         - pd.Timedelta(
-            days=PREDICTION_WINDOW_DAYS
+            days=DISCLOSURE_DEADLINE_DAYS
+            + PREDICTION_WINDOW_DAYS
         )
     )
 
@@ -286,8 +380,9 @@ def main():
 
         for prediction_date in prediction_dates:
 
+            # Only trades that were PUBLIC before the prediction date.
             history = member_trades[
-                member_trades["td"]
+                member_trades["available_at"]
                 < prediction_date
             ]
 
@@ -295,19 +390,19 @@ def main():
                 continue
 
             history_21 = history[
-                history["td"]
+                history["available_at"]
                 >= prediction_date
                 - pd.Timedelta(days=21)
             ]
 
             history_90 = history[
-                history["td"]
+                history["available_at"]
                 >= prediction_date
                 - pd.Timedelta(days=90)
             ]
 
             history_365 = history[
-                history["td"]
+                history["available_at"]
                 >= prediction_date
                 - pd.Timedelta(days=365)
             ]
@@ -326,12 +421,12 @@ def main():
             future = member_trades[
                 (
                     member_trades["td"]
-                    > prediction_date
+                    >= prediction_date
                 )
                 &
                 (
                     member_trades["td"]
-                    <= target_end
+                    < target_end
                 )
             ]
 
@@ -542,6 +637,11 @@ def main():
             ]
         )
         .reset_index(drop=True)
+    )
+
+    verify_no_leakage(
+        model_df,
+        trades
     )
 
     OUT.parent.mkdir(

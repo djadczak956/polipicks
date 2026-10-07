@@ -7,10 +7,10 @@ from sklearn.metrics import (
     f1_score
 )
 
-from config.model_config import THRESHOLD
+from config.model_config import THRESHOLD_GRID
 
 
-def evaluate_model(
+def predict_probabilities(
     model,
     dataloader,
     device
@@ -19,7 +19,7 @@ def evaluate_model(
     model.eval()
 
     targets_list = []
-    predictions_list = []
+    probabilities_list = []
 
     with torch.no_grad():
 
@@ -33,40 +33,79 @@ def evaluate_model(
                 logits
             )
 
-            predictions = (
-                probabilities >= THRESHOLD
-            ).int()
-
             targets_list.append(
                 targets.numpy()
             )
 
-            predictions_list.append(
-                predictions.cpu().numpy()
+            probabilities_list.append(
+                probabilities.cpu().numpy()
             )
 
     y_true = np.vstack(targets_list)
-    y_pred = np.vstack(predictions_list)
+    probabilities = np.vstack(probabilities_list)
 
-    precision = precision_score(
-        y_true,
-        y_pred,
-        average="micro",
-        zero_division=0
+    return y_true, probabilities
+
+
+def score_predictions(y_true, y_pred):
+
+    # Micro: every member-sector cell counts equally.
+    # Macro: average over sectors, so rare sectors count as much as common ones.
+    # Accuracy is left out on purpose: predicting "no trade" everywhere
+    # is ~96% accurate.
+    return {
+        "precision": precision_score(
+            y_true, y_pred, average="micro", zero_division=0
+        ),
+        "recall": recall_score(
+            y_true, y_pred, average="micro", zero_division=0
+        ),
+        "f1": f1_score(
+            y_true, y_pred, average="micro", zero_division=0
+        ),
+        "macro_f1": f1_score(
+            y_true, y_pred, average="macro", zero_division=0
+        ),
+    }
+
+
+def choose_threshold(y_true, probabilities):
+
+    # Pick the threshold with the best micro F1. Only call this on
+    # tuning data, never on the test period.
+    f1_scores = [
+        f1_score(
+            y_true,
+            probabilities >= threshold,
+            average="micro",
+            zero_division=0
+        )
+        for threshold in THRESHOLD_GRID
+    ]
+
+    return float(
+        THRESHOLD_GRID[int(np.argmax(f1_scores))]
     )
 
-    recall = recall_score(
-        y_true,
-        y_pred,
-        average="micro",
-        zero_division=0
+
+def evaluate_model(
+    model,
+    dataloader,
+    device,
+    threshold
+):
+
+    y_true, probabilities = predict_probabilities(
+        model,
+        dataloader,
+        device
     )
 
-    f1 = f1_score(
-        y_true,
-        y_pred,
-        average="micro",
-        zero_division=0
-    )
+    y_pred = (
+        probabilities >= threshold
+    ).astype(int)
 
-    return precision, recall, f1
+    return score_predictions(
+        y_true,
+        y_pred
+    )

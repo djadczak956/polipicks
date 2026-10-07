@@ -50,8 +50,28 @@ DATE_COLUMN = "prediction_date"
 
 PREDICTION_WINDOW_DAYS = 21
 
-BATCH_SIZE = 64
+# Defaults chosen by a 48-combination sweep (tuned on the last training
+# year of each fold, not on the test years). Mean test micro F1 ~0.50.
+BATCH_SIZE = 256
 LEARNING_RATE = 0.001
-WEIGHT_DECAY = 1e-4
+WEIGHT_DECAY = 1e-3
 EPOCHS = 30
-THRESHOLD = 0.5
+
+# Loss weight on positive labels per sector: "none", "sqrt" or "full".
+POS_WEIGHT = "sqrt"
+
+# The decision threshold is chosen per fold: train on all but the last
+# TUNING_DAYS of the training period, pick the threshold with the best F1
+# there, then retrain on the full training period and score the test year.
+TUNING_DAYS = 365
+THRESHOLD_GRID = [round(0.05 * i, 2) for i in range(1, 19)]
+
+SEED = 0
+
+ANOMALY_ALPHAS = [1.0, 2.0, 5.0, 10.0, 20.0]
+ANOMALY_TEST_START = "2023-01-01"
+# Fixed by definition, not tuned: the injection test can't judge what counts as routine.
+ROUTINE_WINDOW_DAYS = 365
+ROUTINE_MIN_TRADES = 3
+# Flag when the sector had under ~2% chance (e^-4) for that member.
+ANOMALY_FLAG_SCORE = 4.0

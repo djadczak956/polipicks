@@ -279,7 +279,7 @@ def surprise(probs, sector_index):
     return -np.log(np.clip(picked, EPS, 1.0))
 
 
-def inject(trades, rows, rng, recent=None, rate=0.05):
+def inject(trades, rows, rng, rate=0.05):
 
     sector_index = trades["sector"].map(SECTORS.index).to_numpy()
 
@@ -297,10 +297,6 @@ def inject(trades, rows, rng, recent=None, rate=0.05):
 
         mix = house_mix.copy()
         mix[sector_index[i]] = 0
-
-        # Moving a trade into one of the member's routine sectors wouldn't make it anomalous.
-        if recent is not None:
-            mix[recent[i] >= ROUTINE_MIN_TRADES] = 0
 
         if mix.sum() == 0:
             continue
@@ -361,8 +357,7 @@ def evaluate(trades, p_history, p_model, recent):
     swapped, injected = inject(
         trades,
         rows,
-        np.random.default_rng(1),
-        recent
+        np.random.default_rng(1)
     )
 
     score_history = surprise(p_history, swapped)
@@ -380,8 +375,8 @@ def evaluate(trades, p_history, p_model, recent):
     }
 
     print(
-        f"\nTest on trades from {ANOMALY_TEST_START}: {injected.sum()} of {len(rows)} "
-        f"moved into a sector the member doesn't trade routinely"
+        f"\nSynthetic test on trades from {ANOMALY_TEST_START}: "
+        f"{injected.sum()} of {len(rows)} had their sector changed"
     )
 
     print(f"  {'AUC':<9} {'pooled':>7} {'per member':>11} {'trades':>7}")

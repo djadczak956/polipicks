@@ -241,7 +241,8 @@ def model_probs(trades, model_df):
 
     fold_probs = pd.concat(fold_probs)
 
-    # Each trade belongs to the window (d, d + 21] that starts at the latest prediction date before it.
+    # Each trade belongs to the window [d, d + 21) that starts at the latest prediction date
+    # on or before it (build_model_data targets use the same half-open window).
     window_starts = pd.DataFrame({
         DATE_COLUMN: np.sort(pd.to_datetime(model_df[DATE_COLUMN].unique()))
     })
@@ -251,7 +252,7 @@ def model_probs(trades, model_df):
         window_starts,
         left_on="td",
         right_on=DATE_COLUMN,
-        allow_exact_matches=False
+        allow_exact_matches=True
     )
 
     joined = (
@@ -388,6 +389,11 @@ def evaluate(trades, p_history, p_model, recent):
         pooled, weighted = results[name]
         print(f"  {name:<9} {pooled:>7.3f} {weighted:>11.3f} {len(subset):>7}")
 
+    # The injection only moves trades into NON-routine sectors, and "routine" zeroes
+    # routine-sector scores, so its AUC is partly true by construction.
+    print("  note: 'routine' is optimistic (injected trades are never in routine sectors);")
+    print("        quote the per-member column, and 'history' as the clean comparison.")
+
     return results
 
 
@@ -444,7 +450,7 @@ def main():
 
     scores = trades[[
         "memberId", "td", "ticker", "assetDescription", "action",
-        "amount_mid", "sector", "sourceDocId", "sourceUrl"
+        "owner", "amount_mid", "sector", "sourceDocId", "sourceUrl"
     ]].copy()
 
     scores["score_history"] = surprise(p_history, sector_index)
@@ -495,7 +501,7 @@ def main():
     with pd.option_context("display.width", 200, "display.max_colwidth", 40):
         print(
             scores.head(20)[[
-                "name", "td", "ticker", "sector", "sourceDocId",
+                "name", "td", "ticker", "owner", "sector", "sourceDocId",
                 "recent_sector_trades", "anomaly_score", "flag", "committee_sectors"
             ]].to_string(index=False)
         )

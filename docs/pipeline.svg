@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 920" width="940" height="920" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+  <title>PoliPicks pipeline</title>
+  <desc>Five sources are loaded into four interim files, joined by build_model_data.py into model_data.parquet, which feeds the neural net, the anomaly detector and the committee analysis. Their outputs feed the Streamlit dashboard.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      .t { font-size: 14px; font-weight: 600; }
+      .s { font-size: 12px; }
+      .src rect { fill: #F1EFE8; stroke: #888780; }
+      .src text { fill: #444441; }
+      .code rect { fill: #EEEDFE; stroke: #534AB7; }
+      .code text { fill: #3C3489; }
+      .file rect { fill: #E1F5EE; stroke: #0F6E56; }
+      .file text { fill: #085041; }
+      .ui rect { fill: #FAECE7; stroke: #993C1D; }
+      .ui text { fill: #712B13; }
+      .arr { stroke: #5F5E5A; stroke-width: 1.2; fill: none; }
+    </style>
+  </defs>
+  <rect width="940" height="920" fill="#FFFFFF"/>
+
+  <!-- 1. sources -->
+  <g class="src" text-anchor="middle">
+    <rect x="20" y="30" width="168" height="60" rx="6"/>
+    <text class="t" x="104" y="55">Trade parquets</text><text class="s" x="104" y="74">data/raw, 2021–2026</text>
+    <rect x="203" y="30" width="168" height="60" rx="6"/>
+    <text class="t" x="287" y="55">Congress.gov API</text><text class="s" x="287" y="74">members, terms (.env key)</text>
+    <rect x="386" y="30" width="168" height="60" rx="6"/>
+    <text class="t" x="470" y="55">legislators repo</text><text class="s" x="470" y="74">git history snapshots</text>
+    <rect x="569" y="30" width="168" height="60" rx="6"/>
+    <text class="t" x="653" y="55">yfinance</text><text class="s" x="653" y="74">+ ticker overrides CSV</text>
+    <rect x="752" y="30" width="168" height="60" rx="6"/>
+    <text class="t" x="836" y="55">committee_sectors</text><text class="s" x="836" y="74">hand-made CSV</text>
+  </g>
+
+  <!-- 2. loaders -->
+  <g class="code" text-anchor="middle">
+    <rect x="20" y="130" width="168" height="50" rx="6"/>
+    <text class="t" x="104" y="151">load_trades</text><text class="s" x="104" y="169">stack + 4 filters</text>
+    <rect x="203" y="130" width="168" height="50" rx="6"/>
+    <text class="t" x="287" y="151">load_legislators</text><text class="s" x="287" y="169">117th–119th</text>
+    <rect x="386" y="130" width="168" height="50" rx="6"/>
+    <text class="t" x="470" y="151">load_committees</text><text class="s" x="470" y="169">1 snapshot per Congress</text>
+    <rect x="569" y="130" width="168" height="50" rx="6"/>
+    <text class="t" x="653" y="151">load_ticker_sectors</text><text class="s" x="653" y="169">cached lookups</text>
+  </g>
+
+  <!-- 3. interim files -->
+  <g class="file" text-anchor="middle">
+    <rect x="20" y="220" width="168" height="50" rx="6"/>
+    <text class="t" x="104" y="241">transactions</text><text class="s" x="104" y="259">58,162 trades</text>
+    <rect x="203" y="220" width="168" height="50" rx="6"/>
+    <text class="t" x="287" y="241">legislators</text><text class="s" x="287" y="259">first term → tenure</text>
+    <rect x="386" y="220" width="168" height="50" rx="6"/>
+    <text class="t" x="470" y="241">committee seats</text><text class="s" x="470" y="259">2,586 across 3 Congresses</text>
+    <rect x="569" y="220" width="168" height="50" rx="6"/>
+    <text class="t" x="653" y="241">ticker_sectors</text><text class="s" x="653" y="259">97% of trades covered</text>
+  </g>
+
+  <path class="arr" d="M104 90V128" marker-end="url(#a)"/>
+  <path class="arr" d="M287 90V128" marker-end="url(#a)"/>
+  <path class="arr" d="M470 90V128" marker-end="url(#a)"/>
+  <path class="arr" d="M653 90V128" marker-end="url(#a)"/>
+  <path class="arr" d="M104 180V218" marker-end="url(#a)"/>
+  <path class="arr" d="M287 180V218" marker-end="url(#a)"/>
+  <path class="arr" d="M470 180V218" marker-end="url(#a)"/>
+  <path class="arr" d="M653 180V218" marker-end="url(#a)"/>
+  <path class="arr" d="M104 270V318" marker-end="url(#a)"/>
+  <path class="arr" d="M287 270V318" marker-end="url(#a)"/>
+  <path class="arr" d="M470 270V318" marker-end="url(#a)"/>
+  <path class="arr" d="M653 270V318" marker-end="url(#a)"/>
+  <path class="arr" d="M836 90V318" marker-end="url(#a)"/>
+
+  <!-- 4. join -->
+  <g class="code" text-anchor="middle">
+    <rect x="20" y="320" width="900" height="90" rx="6"/>
+    <text class="t" x="470" y="344">src/build_model_data.py — every join happens here</text>
+    <text class="s" x="470" y="366">trade → sector on ticker · seat → sectors on committee_code · seats by memberId + Congress · tenure by memberId</text>
+    <text class="s" x="470" y="386">one row per member every 21 days · features use only already-disclosed trades · targets = sectors traded next 21 days</text>
+    <text class="s" x="470" y="403">verify_no_leakage() recomputes every row and fails the build on any mismatch</text>
+  </g>
+  <path class="arr" d="M470 410V448" marker-end="url(#a)"/>
+
+  <!-- 5. model table -->
+  <g class="file" text-anchor="middle">
+    <rect x="300" y="450" width="340" height="60" rx="6"/>
+    <text class="t" x="470" y="475">data/processed/model_data.parquet</text>
+    <text class="s" x="470" y="495">12,641 rows · 30 features · 11 sector targets</text>
+  </g>
+  <path class="arr" d="M470 510V535H160V558" marker-end="url(#a)"/>
+  <path class="arr" d="M470 535V558" marker-end="url(#a)"/>
+  <path class="arr" d="M470 535H780V558" marker-end="url(#a)"/>
+
+  <!-- 6. consumers -->
+  <g class="code" text-anchor="middle">
+    <rect x="20" y="560" width="280" height="70" rx="6"/>
+    <text class="t" x="160" y="583">main.py — neural net</text>
+    <text class="s" x="160" y="602">MLP 30→128→64→32→11, pos_weight</text>
+    <text class="s" x="160" y="619">walk-forward, threshold tuned per fold</text>
+    <rect x="330" y="560" width="280" height="70" rx="6"/>
+    <text class="t" x="470" y="583">src/anomaly.py</text>
+    <text class="s" x="470" y="602">member history vs House mix (+ trades)</text>
+    <text class="s" x="470" y="619">routine rule, flag if score &gt; 4.0</text>
+    <rect x="640" y="560" width="280" height="70" rx="6"/>
+    <text class="t" x="780" y="583">src/committee_analysis.py</text>
+    <text class="s" x="780" y="602">committee seat vs sectors traded</text>
+    <text class="s" x="780" y="619">member-weighted, bootstrap interval</text>
+  </g>
+  <path class="arr" d="M160 630V668" marker-end="url(#a)"/>
+  <path class="arr" d="M470 630V668" marker-end="url(#a)"/>
+  <path class="arr" d="M780 630V668" marker-end="url(#a)"/>
+
+  <!-- 7. outputs -->
+  <g class="file" text-anchor="middle">
+    <rect x="20" y="670" width="280" height="50" rx="6"/>
+    <text class="t" x="160" y="691">model_predictions.parquet</text><text class="s" x="160" y="709">target_* + prob_* per test row</text>
+    <rect x="330" y="670" width="280" height="50" rx="6"/>
+    <text class="t" x="470" y="691">anomaly_scores.parquet</text><text class="s" x="470" y="709">every trade scored, 477 flagged</text>
+    <rect x="640" y="670" width="280" height="50" rx="6"/>
+    <text class="t" x="780" y="691">committee_effect.csv</text><text class="s" x="780" y="709">lift per sector with interval</text>
+  </g>
+  <path class="arr" d="M160 720V768" marker-end="url(#a)"/>
+  <path class="arr" d="M470 720V768" marker-end="url(#a)"/>
+  <path class="arr" d="M780 720V768" stroke-dasharray="5 4" marker-end="url(#a)"/>
+  <text x="790" y="749" font-size="11" fill="#5F5E5A">to wire up</text>
+
+  <!-- 8. dashboard -->
+  <g class="ui" text-anchor="middle">
+    <rect x="20" y="770" width="900" height="70" rx="6"/>
+    <text class="t" x="470" y="794">Streamlit dashboard — dashboard/app.py (make dashboard)</text>
+    <text class="s" x="470" y="813">Overview · Member profile · Committees vs. trading · Flagged trades · Model performance</text>
+    <text class="s" x="470" y="830">also reads the interim files directly for member names, committees and filings</text>
+  </g>
+
+  <!-- legend -->
+  <g class="s">
+    <rect x="20" y="870" width="14" height="14" rx="3" fill="#F1EFE8" stroke="#888780"/><text x="40" y="882" fill="#444441">source</text>
+    <rect x="110" y="870" width="14" height="14" rx="3" fill="#EEEDFE" stroke="#534AB7"/><text x="130" y="882" fill="#3C3489">code</text>
+    <rect x="190" y="870" width="14" height="14" rx="3" fill="#E1F5EE" stroke="#0F6E56"/><text x="210" y="882" fill="#085041">file on disk</text>
+    <rect x="300" y="870" width="14" height="14" rx="3" fill="#FAECE7" stroke="#993C1D"/><text x="320" y="882" fill="#712B13">app</text>
+  </g>
+</svg>

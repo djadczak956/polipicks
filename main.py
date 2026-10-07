@@ -13,7 +13,8 @@ from config.model_config import (
     WEIGHT_DECAY,
     EPOCHS,
     POS_WEIGHT,
-    SEED
+    SEED,
+    SECTORS
 )
 
 from src.dataset import PoliPickDataset
@@ -25,6 +26,11 @@ from src.evaluate import (
     choose_threshold,
     score_predictions
 )
+
+
+# Every fold's test-period probabilities, read by the dashboard's
+# "Model performance" tab.
+PREDICTIONS_OUT = "data/processed/model_predictions.parquet"
 
 
 def fit_and_predict(train_df, eval_df, device):
@@ -101,6 +107,7 @@ def run_walk_forward(df):
     print(f"Walk-forward folds: {len(folds)}")
 
     results = []
+    predictions = []
 
     for fold_number, fold in enumerate(
         folds,
@@ -155,6 +162,20 @@ def run_walk_forward(df):
             )
         )
 
+        predictions.append(
+            test_df[["memberId", DATE_COLUMN]]
+            .reset_index(drop=True)
+            .assign(fold=fold_number, threshold=threshold)
+            .join(pd.DataFrame(
+                y_test.astype(int),
+                columns=[f"target_{s}" for s in SECTORS]
+            ))
+            .join(pd.DataFrame(
+                p_test,
+                columns=[f"prob_{s}" for s in SECTORS]
+            ))
+        )
+
         results.append({
             "fold": fold_number,
             "test_start": test_df[DATE_COLUMN].min().date(),
@@ -163,6 +184,11 @@ def run_walk_forward(df):
         })
 
     summary = pd.DataFrame(results).set_index("fold")
+
+    pd.concat(predictions, ignore_index=True).to_parquet(
+        PREDICTIONS_OUT,
+        index=False
+    )
 
     print("\n======================")
     print("Summary")
@@ -179,6 +205,7 @@ def run_walk_forward(df):
         f"f1={summary.f1.mean():.4f} "
         f"macro_f1={summary.macro_f1.mean():.4f}"
     )
+    print(f"\nwrote {PREDICTIONS_OUT}")
 
     return summary
 

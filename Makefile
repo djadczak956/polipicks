@@ -4,7 +4,7 @@
 PY ?= python
 LEGISLATORS_REPO = data/external/congress-legislators
 
-.PHONY: data train baselines trades legislators committees sectors model_data clean
+.PHONY: data train baselines anomalies committee-analysis dashboard trades legislators committees sectors model_data clean
 
 data: model_data
 
@@ -35,6 +35,18 @@ train:
 # Same folds and threshold tuning as `train`; compare its mean f1 to these.
 baselines:
 	$(PY) -m src.baselines
+
+# Scores every trade; writes data/processed/anomaly_scores.parquet.
+anomalies:
+	$(PY) -m src.anomaly
+
+# Committee seat vs. sectors traded, each member weighted equally.
+committee-analysis:
+	$(PY) -m src.committee_analysis
+
+# Needs train + anomalies first so its tabs have data.
+dashboard:
+	streamlit run dashboard/app.py
 
 # Keeps ticker_sectors.parquet: it is a slow-to-rebuild cache.
 clean:

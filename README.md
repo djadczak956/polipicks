@@ -1,6 +1,6 @@
 # PoliPicks
 
-Predicts which market sectors a member of Congress will trade in next quarter, and flags stock-trade disclosures that don't fit the pattern.
+Predicts which market sectors a member of Congress will trade in the next 21 days, and flags stock-trade disclosures that don't fit the pattern.
 
 CS4342 (Machine Learning) project by team PoliDetect: Vincent Grassi, Krish Patel, Andrew Melton, Damian Jadczak, Antoine Pham.
 
@@ -24,9 +24,9 @@ PoliPicks is meant for:
 | `config/committee_sectors.csv` (hand-written) | House committees → GICS sectors | Committee–sector mapping |
 | yfinance + `config/ticker_sector_overrides.csv` | Sector per ticker, cached; overrides cover delisted/renamed companies and mark funds | Ticker → sector |
 
-All sources join on bioguide ID. Labels come from the filings themselves: the set of sectors a member traded in a given quarter.
+All sources join on bioguide ID. Labels come from the filings themselves: the set of sectors a member traded in the next 21 days.
 
-We use the dataset instead of parsing the House Clerk PDFs ourselves. We checked a random sample of 50 filings against the Clerk's PDFs: every source PDF matched the dataset's SHA-256, and every row in the 40 electronic filings matched an independent parse. Rows from scanned filings are model-read and can misread the day of the month, which doesn't affect quarterly labels. The data is restricted to non-commercial use under 5 U.S.C. 13107(c) (see the dataset's `LICENSE_DATA.md`).
+We use the dataset instead of parsing the House Clerk PDFs ourselves. We checked a random sample of 50 filings against the Clerk's PDFs: every source PDF matched the dataset's SHA-256, and every row in the 40 electronic filings matched an independent parse. Rows from scanned filings are model-read and can misread the day of the month, which can move a trade into a neighboring 21-day window. The data is restricted to non-commercial use under 5 U.S.C. 13107(c) (see the dataset's `LICENSE_DATA.md`).
 
 To get it:
 
@@ -72,7 +72,7 @@ Decisions worth knowing:
 
 ### Sector prediction (multi-label classification)
 
-- One row per member-quarter, 11 GICS sectors as labels.
+- One row per member per 21-day prediction date, 11 GICS sectors as labels.
 - Primary model: a small feedforward network with 11 sigmoid outputs and binary cross-entropy weighted by inverse label frequency (Information Technology is far more common than Utilities, for example).
 - Benchmarks: logistic regression and XGBoost (scikit-learn, XGBoost). We expect gradient-boosted trees to score highest on a few thousand rows of mostly categorical features, and we'll report the comparison as it comes out.
 - Baseline: predict each member's historical sector mix.
@@ -91,3 +91,5 @@ Flags above a configurable threshold are shown along with the features behind th
 ## Interface
 
 Streamlit, or a FastAPI + React app.
+
+See [docs/PIPELINE.md](docs/PIPELINE.md) for how the whole pipeline fits together.

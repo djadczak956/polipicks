@@ -42,7 +42,7 @@ def compute_pos_weight(targets, mode):
         return None
 
     positive_rate = (
-        torch.as_tensor(targets, dtype=torch.float32)
+        torch.tensor(targets, dtype=torch.float32)
         .mean(dim=0)
         .clamp(min=1e-3)
     )

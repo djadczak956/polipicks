@@ -196,6 +196,17 @@ def history_probs(trades, alpha, house=None):
     )
 
 
+def _match_prediction_windows(trades, window_starts):
+
+    return pd.merge_asof(
+        trades[["td"]].reset_index(),
+        window_starts,
+        left_on="td",
+        right_on=DATE_COLUMN,
+        allow_exact_matches=True
+    )
+
+
 def model_probs(trades, model_df):
 
     torch.manual_seed(0)
@@ -241,18 +252,12 @@ def model_probs(trades, model_df):
 
     fold_probs = pd.concat(fold_probs)
 
-    # Each trade belongs to the window (d, d + 21] that starts at the latest prediction date before it.
+    # Targets cover [d, d + 21), so a trade on d uses the prediction dated d.
     window_starts = pd.DataFrame({
         DATE_COLUMN: np.sort(pd.to_datetime(model_df[DATE_COLUMN].unique()))
     })
 
-    windows = pd.merge_asof(
-        trades[["td"]].reset_index(),
-        window_starts,
-        left_on="td",
-        right_on=DATE_COLUMN,
-        allow_exact_matches=False
-    )
+    windows = _match_prediction_windows(trades, window_starts)
 
     joined = (
         windows

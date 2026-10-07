@@ -2,7 +2,8 @@ import pandas as pd
 
 from config.model_config import (
     PREDICTION_WINDOW_DAYS,
-    DATE_COLUMN
+    DATE_COLUMN,
+    TUNING_DAYS
 )
 
 
@@ -47,3 +48,25 @@ def walk_forward_splits(df):
         })
 
     return folds
+
+
+def split_for_tuning(train_df):
+
+    # Hold out the last TUNING_DAYS of the training period to pick the
+    # threshold. Rows just before the cutoff are dropped because their
+    # 21-day target windows would overlap the tuning period.
+    tune_start = (
+        train_df[DATE_COLUMN].max()
+        - pd.Timedelta(days=TUNING_DAYS)
+    )
+
+    fit_df = train_df[
+        train_df[DATE_COLUMN]
+        < tune_start - pd.Timedelta(days=PREDICTION_WINDOW_DAYS)
+    ]
+
+    tune_df = train_df[
+        train_df[DATE_COLUMN] >= tune_start
+    ]
+
+    return fit_df, tune_df

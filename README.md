@@ -43,8 +43,11 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 echo "CONGRESS_API_KEY=<your key>" > .env   # free key from api.congress.gov; never commit it
 make data    # builds data/processed/model_data.parquet (~1 min with the sector cache)
-make train
+make train       # neural net: per-fold and mean precision / recall / F1 / macro F1
+make baselines   # same folds: repeat-last-90d, logistic regression, gradient boosting (~4 min)
 ```
+
+Hyperparameters live in `config/model_config.py`. Each fold picks its decision threshold on the last year of its training period, then is scored once on its test period. Compare runs by the `mean f1` line; accuracy is not reported because predicting "no trade" everywhere is ~96% accurate.
 
 `make data` runs these in order; each writes one file:
 

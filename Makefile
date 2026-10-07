@@ -4,7 +4,7 @@
 PY ?= python
 LEGISLATORS_REPO = data/external/congress-legislators
 
-.PHONY: data train trades legislators committees sectors model_data clean
+.PHONY: data train baselines trades legislators committees sectors model_data clean
 
 data: model_data
 
@@ -31,6 +31,10 @@ model_data: trades legislators committees sectors
 
 train:
 	$(PY) main.py
+
+# Same folds and threshold tuning as `train`; compare its mean f1 to these.
+baselines:
+	$(PY) -m src.baselines
 
 # Keeps ticker_sectors.parquet: it is a slow-to-rebuild cache.
 clean:

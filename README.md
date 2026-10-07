@@ -19,9 +19,10 @@ PoliPicks is meant for:
 | Source | Contents | Role |
 |---|---|---|
 | [congressional-stock-trades](https://huggingface.co/datasets/austin-starks/congressional-stock-trades) | House and Senate Periodic Transaction Reports already extracted from the official filings (electronic and scanned), with bioguide IDs, tickers, amount ranges and amendment history; refreshed about every 20 hours | Transactions, 2021–2026 (about 24 quarters) |
-| [congress-legislators](https://github.com/unitedstates/congress-legislators) | Committee assignments, party, state, chamber, tenure | Member features |
-| Hand-written CSV | ~20 House committees → GICS sectors | Committee–sector mapping |
-| yfinance | Sector per ticker, fetched once and cached | Ticker → sector |
+| [Congress.gov API](https://api.congress.gov/) | Members of the 117th–119th Congresses with term history | Tenure |
+| [congress-legislators](https://github.com/unitedstates/congress-legislators) | Committee membership, recovered per Congress from the repo's git history | Committee features |
+| `config/committee_sectors.csv` (hand-written) | House committees → GICS sectors | Committee–sector mapping |
+| yfinance + `config/ticker_sector_overrides.csv` | Sector per ticker, cached; overrides cover delisted/renamed companies and mark funds | Ticker → sector |
 
 All sources join on bioguide ID. Labels come from the filings themselves: the set of sectors a member traded in a given quarter.
 
@@ -35,12 +36,37 @@ git clone https://huggingface.co/datasets/austin-starks/congressional-stock-trad
 
 ## Pipeline
 
-1. Load `political_trade_events` (one row per trade, with repeated reports merged) and keep House members.
-2. Map tickers to sectors. Scanned filings have no asset-type code and sometimes no ticker, so those rows are matched on asset name.
-3. Aggregate to one row per member-quarter. Features use only trades with `availableAt` before the label quarter.
-4. Weight or cap per member where row counts matter: two members account for over half of all House rows.
+Setup:
 
-Slow steps are cached so they run once. Storage and processing use pandas and DuckDB.
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+echo "CONGRESS_API_KEY=<your key>" > .env   # free key from api.congress.gov; never commit it
+make data    # builds data/processed/model_data.parquet (~1 min with the sector cache)
+make train       # neural net: per-fold and mean precision / recall / F1 / macro F1
+make baselines   # same folds: repeat-last-90d, logistic regression, gradient boosting (~4 min)
+```
+
+Hyperparameters live in `config/model_config.py`. Each fold picks its decision threshold on the last year of its training period, then is scored once on its test period. Compare runs by the `mean f1` line; accuracy is not reported because predicting "no trade" everywhere is ~96% accurate.
+
+`make data` runs these in order; each writes one file:
+
+| Script | Output | What it does |
+|---|---|---|
+| `src/load_trades.py` | `data/interim/transactions.parquet` | Stacks the six yearly parquets in `data/raw/`; drops amended-away rows, Senate, rows without a ticker, and trades outside 2021-01-01–2026-09-30. Asserts 58,162 trades, 201 members, 2,643 tickers. |
+| `src/load_legislators.py` | `data/interim/legislators.parquet` | Members and first House term from Congress.gov. |
+| `src/load_committee_snapshots.py` | `data/interim/committee_assignments.parquet` | One committee snapshot per Congress from the legislators repo's git history (needs a full clone; `make` clones it). |
+| `src/load_ticker_sectors.py` | `data/interim/ticker_sectors.parquet` | yfinance sector per ticker, then the overrides file. |
+| `src/build_model_data.py` | `data/processed/model_data.parquet` | All joins. One row per member per 21-day prediction date. |
+
+Decisions worth knowing:
+
+- **Features only use disclosed trades.** History features count trades whose `available_at` (when the filing became public) is before the prediction date. The median trade is disclosed 28 days after it happens, longer than the 21-day window, so using trade dates would leak. Targets are the sectors traded in `[prediction_date, prediction_date + 21 days)`. `verify_no_leakage` recomputes every row independently and fails the build on any mismatch.
+- **No incomplete targets at the end.** Prediction dates stop 45 days (the STOCK Act deadline) plus one window before the data was pulled, since recent trades aren't all disclosed yet.
+- **Committee snapshot dates.** 117th: 2021-03-15 (House assignments were added to the repo on 2021-03-01). 118th: 2023-03-01. 119th: 2025-04-01 (the China select committee was added on 2025-03-13). Each Congress uses one snapshot, so mid-Congress committee changes aren't reflected.
+- **Committee mapping.** Committees without a clear sector (Appropriations, Budget, Rules, Ethics, Judiciary, Oversight, House Administration, Foreign Affairs, Homeland Security, Intelligence, Small Business, Education and Workforce, most select committees) set no jurisdiction bits. No committee maps to Consumer Discretionary yet.
+- **Ticker sectors.** Yahoo has no data for delisted or renamed companies (FB, ATVI, SIVB, ...). `config/ticker_sector_overrides.csv` assigns those by hand and marks funds/ETFs as `fund` with no sector. 97% of trades have a sector, 1.6% are funds, 1.3% are unresolved.
+- **Data is committed.** `data/raw`, `data/interim` and `data/processed` are small (~2 MB) and checked in so everyone trains on the same files.
 
 ## Modeling
 

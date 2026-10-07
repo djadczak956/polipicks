@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
+import torch
 
 from config.model_config import (
     DATE_COLUMN,
@@ -16,6 +17,7 @@ from src.anomaly import (
     inject,
     routine_mask,
 )
+from src.model import ResidualPoliPickModel
 
 
 class MatchPredictionWindowsTests(unittest.TestCase):
@@ -104,6 +106,16 @@ class AnomalyPipelineTests(unittest.TestCase):
         swapped = captured["swapped"]
         self.assertTrue(injected.any())
         self.assertTrue(routine_mask(recent, swapped)[injected].all())
+
+
+class ModelArchitectureTests(unittest.TestCase):
+
+    def test_residual_model_returns_one_logit_per_sector(self):
+
+        model = ResidualPoliPickModel(input_size=30, num_sectors=11)
+        logits = model(torch.zeros(4, 30))
+
+        self.assertEqual(tuple(logits.shape), (4, 11))
 
 
 if __name__ == "__main__":

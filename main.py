@@ -17,7 +17,7 @@ from config.model_config import (
 )
 
 from src.dataset import PoliPickDataset
-from src.model import PoliPickModel
+from src.model import PoliPickModel, ResidualPoliPickModel
 from src.splits import walk_forward_splits, split_for_tuning
 from src.train import train_model, compute_pos_weight, get_device
 from src.evaluate import (
@@ -27,7 +27,7 @@ from src.evaluate import (
 )
 
 
-def fit_and_predict(train_df, eval_df, device):
+def fit_and_predict(train_df, eval_df, device, model_class=PoliPickModel):
 
     # Same seed for every fit so runs are repeatable.
     torch.manual_seed(SEED)
@@ -58,7 +58,7 @@ def fit_and_predict(train_df, eval_df, device):
         shuffle=False
     )
 
-    model = PoliPickModel(
+    model = model_class(
         input_size=len(FEATURE_COLUMNS),
         num_sectors=len(TARGET_COLUMNS)
     ).to(device)
@@ -89,10 +89,11 @@ def fit_and_predict(train_df, eval_df, device):
     )
 
 
-def run_walk_forward(df):
+def run_walk_forward(df, model_class=PoliPickModel):
 
     device = get_device()
 
+    print(f"Model: {model_class.__name__}")
     print(f"Using device: {device}")
     print(f"Total model rows: {len(df)}")
 
@@ -127,7 +128,8 @@ def run_walk_forward(df):
         y_tune, p_tune = fit_and_predict(
             fit_df,
             tune_df,
-            device
+            device,
+            model_class
         )
 
         threshold = choose_threshold(
@@ -139,7 +141,8 @@ def run_walk_forward(df):
         y_test, p_test = fit_and_predict(
             train_df,
             test_df,
-            device
+            device,
+            model_class
         )
 
         scores = score_predictions(
@@ -195,7 +198,18 @@ def main():
         df[DATE_COLUMN]
     )
 
-    run_walk_forward(df)
+    summaries = {
+        model_class.__name__: run_walk_forward(df, model_class)
+        for model_class in (PoliPickModel, ResidualPoliPickModel)
+    }
+
+    comparison = pd.DataFrame({
+        name: summary[["precision", "recall", "f1", "macro_f1"]].mean()
+        for name, summary in summaries.items()
+    }).T
+
+    print("\nModel comparison (mean across test folds):")
+    print(comparison.round(4).to_string())
 
 
 if __name__ == "__main__":

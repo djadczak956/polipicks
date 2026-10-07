@@ -1,6 +1,26 @@
 import torch.nn as nn
 
 
+class ResidualBlock(nn.Module):
+
+    def __init__(self, width, dropout):
+        super().__init__()
+
+        self.layers = nn.Sequential(
+            nn.Linear(width, width),
+            nn.BatchNorm1d(width),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(width, width),
+            nn.BatchNorm1d(width),
+        )
+        self.activation = nn.ReLU()
+
+    def forward(self, x):
+
+        return self.activation(x + self.layers(x))
+
+
 class PoliPickModel(nn.Module):
 
     def __init__(self, input_size, num_sectors):
@@ -39,3 +59,33 @@ class PoliPickModel(nn.Module):
         logits = self.output(x)
 
         return logits
+
+
+class ResidualPoliPickModel(nn.Module):
+
+    def __init__(self, input_size, num_sectors):
+        super().__init__()
+
+        self.input = nn.Sequential(
+            nn.Linear(input_size, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Dropout(0.20),
+        )
+        self.blocks = nn.Sequential(
+            ResidualBlock(128, 0.20),
+            ResidualBlock(128, 0.20),
+        )
+        self.output = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Dropout(0.15),
+            nn.Linear(64, num_sectors),
+        )
+
+    def forward(self, x):
+
+        x = self.input(x)
+        x = self.blocks(x)
+
+        return self.output(x)

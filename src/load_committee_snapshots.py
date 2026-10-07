@@ -5,8 +5,8 @@ past Congresses are recovered from its git history: for each Congress we
 take the last commit of committee-membership-current.yaml before a cutoff
 date early in that Congress.
 
-Writes data/interim/committee_assignments.parquet with the same columns as
-load_committee_assignments.py: memberId, congress, committee_code,
+Writes data/interim/committee_assignments.parquet with columns:
+memberId, congress, committee_code,
 committee_name. Full committees only; subcommittee codes (e.g. HSBA01) are
 dropped.
 

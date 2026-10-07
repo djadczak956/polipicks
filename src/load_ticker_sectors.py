@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 TRADES_FILE = ROOT / "data/interim/transactions.parquet"
 OUT = ROOT / "data/interim/ticker_sectors.parquet"
+OVERRIDES_FILE = ROOT / "config/ticker_sector_overrides.csv"
 
 
 YAHOO_TO_GICS = {
@@ -50,6 +51,49 @@ def lookup_sector(ticker):
         )
 
         return None, None
+
+
+def apply_overrides(df):
+
+    # Yahoo has no data for delisted, renamed or acquired companies
+    # (FB, ATVI, SIVB, ...). The hand-made overrides file fills those in.
+    # Funds/ETFs are listed with kind=fund and no sector on purpose:
+    # they are not a bet on one sector.
+    overrides = pd.read_csv(
+        OVERRIDES_FILE,
+        keep_default_na=False
+    )
+
+    # Start from Yahoo's answer every run so edits to the overrides
+    # file take effect even though the lookups themselves are cached.
+    df["sector"] = df["yahoo_sector"].map(YAHOO_TO_GICS)
+
+    df = df.drop(
+        columns=["kind"],
+        errors="ignore"
+    ).merge(
+        overrides.rename(
+            columns={"sector": "override_sector"}
+        ),
+        on="ticker",
+        how="left"
+    )
+
+    fill = (
+        df["sector"].isna()
+        & df["override_sector"].fillna("").ne("")
+    )
+
+    df.loc[fill, "sector"] = df.loc[fill, "override_sector"]
+
+    df["kind"] = df["kind"].fillna("company")
+
+    print(
+        f"Overrides applied: {fill.sum()} sectors, "
+        f"{df['kind'].eq('fund').sum()} funds"
+    )
+
+    return df.drop(columns=["override_sector"])
 
 
 def main():
@@ -147,6 +191,8 @@ def main():
         .sort_values("ticker")
         .reset_index(drop=True)
     )
+
+    df = apply_overrides(df)
 
     OUT.parent.mkdir(
         parents=True,

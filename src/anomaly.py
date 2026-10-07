@@ -11,7 +11,8 @@ from config.model_config import (
     ANOMALY_ALPHAS,
     ANOMALY_TEST_START,
     ROUTINE_WINDOW_DAYS,
-    ROUTINE_MIN_TRADES
+    ROUTINE_MIN_TRADES,
+    ANOMALY_FLAG_SCORE
 )
 
 from src.build_model_data import (
@@ -464,6 +465,12 @@ def main():
         0.0
     )
 
+    scores["flag"] = np.where(
+        scores["anomaly_score"] > ANOMALY_FLAG_SCORE,
+        "F",
+        "U"
+    )
+
     scores["anomaly_rank"] = scores["anomaly_score"].rank(pct=True)
 
     scores["member_rank"] = (
@@ -480,12 +487,16 @@ def main():
     scores.to_parquet(OUT, index=False)
 
     print(f"\nWrote {len(scores)} scored trades to {OUT}")
+    print(
+        f"Flagged {(scores['flag'] == 'F').sum()} trades "
+        f"(score above {ANOMALY_FLAG_SCORE})"
+    )
 
     with pd.option_context("display.width", 200, "display.max_colwidth", 40):
         print(
             scores.head(20)[[
                 "name", "td", "ticker", "sector", "sourceDocId",
-                "recent_sector_trades", "anomaly_score", "committee_sectors"
+                "recent_sector_trades", "anomaly_score", "flag", "committee_sectors"
             ]].to_string(index=False)
         )
 

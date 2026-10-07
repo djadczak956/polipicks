@@ -60,3 +60,5 @@ ANOMALY_TEST_START = "2023-01-01"
 # Fixed by definition, not tuned: the injection test can't judge what counts as routine.
 ROUTINE_WINDOW_DAYS = 365
 ROUTINE_MIN_TRADES = 3
+# Flag when the sector had under ~2% chance (e^-4) for that member.
+ANOMALY_FLAG_SCORE = 4.0

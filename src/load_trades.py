@@ -16,7 +16,7 @@ DATE_START, DATE_END = "2021-01-01", "2026-09-30"
 
 OUT_COLS = [
     "memberId", "ticker", "assetDescription", "action", "is_sale", "partialSale",
-    "td", "quarter", "amountLow", "amountHigh", "amount_mid", "owner",
+    "td", "available_at", "quarter", "amountLow", "amountHigh", "amount_mid", "owner",
     "sourceDocId", "sourceUrl",
 ]
 
@@ -48,6 +48,9 @@ def main():
         quarter=df.td.dt.to_period("Q"),
         is_sale=df.action.isin(["sale"]),
         amount_mid=(df.amountLow + df.amountHigh) / 2,
+        # When the trade became public. Median lag after td is ~28 days, so
+        # features must use this, not td, to avoid seeing undisclosed trades.
+        available_at=df.availableAt,
     )[OUT_COLS].reset_index(drop=True)
 
     print(f"distinct memberId              = {df.memberId.nunique()}")
@@ -66,6 +69,8 @@ def main():
     assert df.ticker.nunique() == 2643
     assert df.quarter.nunique() == 23
     assert df.memberId.notna().all()
+    assert df.available_at.notna().all()
+    assert (df.available_at >= df.td).all()
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(OUT, index=False)

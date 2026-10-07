@@ -15,8 +15,14 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-from config.model_config import SECTORS
+from config.model_config import (
+    ANOMALY_FLAG_SCORE,
+    ROUTINE_MIN_TRADES,
+    SECTORS,
+)
 from dashboard.settings import (
+    ANOMALY_SCORES_FILE,
+    ANOMALY_SCORES_REQUIRED_COLUMNS,
     COMMITTEE_ASSIGNMENTS_FILE,
     COMMITTEE_SECTORS_FILE,
     LEGISLATORS_FILE,
@@ -217,6 +223,62 @@ def load_optional_table(path, required_columns):
         return None, f"`{path.name}` is missing columns: {', '.join(missing)}"
 
     return table, None
+
+
+def load_anomaly_scores():
+    """Read src/anomaly.py's output and add the columns the dashboard shows.
+
+    What src/anomaly.py already computed, per trade:
+      score_history        -log(p), where p = the member's share of past trades
+                           in this sector, blended with the House-wide mix
+                           (Laplace-style smoothing, alpha tuned by an injection test)
+      recent_sector_trades trades by this member in this sector in the
+                           12 months before this one
+      anomaly_score        score_history, but set to 0 when the sector is routine
+                           for the member (>= ROUTINE_MIN_TRADES recent trades)
+      flag                 "F" if anomaly_score > ANOMALY_FLAG_SCORE, else "U"
+      committee_sectors    sectors the member's committees oversaw that Congress
+
+    Returns (table, problem) like load_optional_table.
+    """
+    scores, problem = load_optional_table(ANOMALY_SCORES_FILE, ANOMALY_SCORES_REQUIRED_COLUMNS)
+    if scores is None:
+        return None, problem
+
+    scores["td"] = pd.to_datetime(scores["td"])
+    scores["is_flagged"] = scores["flag"].eq("F")
+    scores["sector_label"] = scores["sector"].map(sector_label)
+
+    # score_history = -log(p), so p can be recovered for a readable explanation.
+    scores["expected_share"] = np.exp(-scores["score_history"])
+
+    committee_sectors = scores.get("committee_sectors", pd.Series("", index=scores.index)).fillna("")
+    scores["in_committee_jurisdiction"] = [
+        sector in [s.strip() for s in overseen.split(",")]
+        for sector, overseen in zip(scores["sector"], committee_sectors)
+    ]
+
+    scores["flag_reasons"] = [
+        describe_anomaly(row) for row in scores[
+            ["is_flagged", "expected_share", "recent_sector_trades",
+             "anomaly_score", "in_committee_jurisdiction"]
+        ].itertuples(index=False)
+    ]
+    return scores, None
+
+
+def describe_anomaly(row):
+    """Short plain-English explanation of a trade's score."""
+    if row.recent_sector_trades >= ROUTINE_MIN_TRADES:
+        return f"Routine ({row.recent_sector_trades} trades in this sector, past year)"
+
+    share = "<0.1%" if row.expected_share < 0.001 else f"{row.expected_share:.1%}"
+    reason = f"{share} expected for this member · {row.recent_sector_trades} in this sector, past year"
+    if row.in_committee_jurisdiction:
+        reason += " · their committee's sector"
+    if not row.is_flagged:
+        reason += f" · under the {ANOMALY_FLAG_SCORE:.0f} cutoff"
+    return reason
 
 
 def prediction_sectors(predictions):

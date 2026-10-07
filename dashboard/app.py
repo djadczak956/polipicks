@@ -7,8 +7,8 @@ Tabs
   Overview               - the dataset at a glance
   Member profile         - one representative's trading (for the public)
   Committees vs. trading - does committee jurisdiction predict trades? (researchers)
-  Flagged trades         - anomaly results to review (journalists)
-  Model performance      - how well the sector classifier forecasts
+  Flagged trades         - src/anomaly.py results to review (journalists)
+  Model performance      - only shown once model_predictions.parquet exists
 """
 
 import sys
@@ -18,16 +18,17 @@ from pathlib import Path
 # so `config` and `dashboard` import the same way they do elsewhere.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 from dashboard import data_loader
+from config.model_config import ANOMALY_FLAG_SCORE, ROUTINE_MIN_TRADES
 from dashboard.settings import (
+    ANOMALY_SCORES_FILE,
     DEFAULT_FLAGS_TO_SHOW,
     DEFAULT_PREDICTION_THRESHOLD,
-    FLAGGED_TRADES_FILE,
-    FLAGGED_TRADES_REQUIRED_COLUMNS,
     HIGHLIGHT_COLOR,
     MODEL_PREDICTIONS_FILE,
     MODEL_PREDICTIONS_REQUIRED_COLUMNS,
@@ -64,8 +65,8 @@ def get_committee_vs_trading():
 
 
 @st.cache_data
-def get_flagged_trades():
-    return data_loader.load_optional_table(FLAGGED_TRADES_FILE, FLAGGED_TRADES_REQUIRED_COLUMNS)
+def get_anomaly_scores():
+    return data_loader.load_anomaly_scores()
 
 
 @st.cache_data
@@ -147,7 +148,8 @@ def render_overview(trades, member_activity, members):
     top_two_share = member_activity["share_of_all_trades"].head(2).sum()
     st.caption(
         f"The top two members account for {top_two_share:.0%} of all trades, "
-        "which is why the pipeline weights or caps rows per member."
+        "That's why the anomaly detector judges each trade against that member's own "
+        "history and gives every member equal weight when it builds the House-wide mix."
     )
     st.dataframe(
         top_traders[["member", "trades", "share_of_all_trades", "tickers", "first_trade", "last_trade"]],
@@ -166,7 +168,7 @@ def render_overview(trades, member_activity, members):
 # Tab: Member profile
 # -------------------------------------------------------------------
 
-def render_member_profile(trades, member_activity, members, flagged_trades, predictions):
+def render_member_profile(trades, member_activity, members, anomaly_scores, predictions):
     member_lookup = members.set_index("memberId")
     traders = member_activity["memberId"].tolist()   # already sorted by trade count
 
@@ -221,8 +223,10 @@ def render_member_profile(trades, member_activity, members, flagged_trades, pred
     if predictions is not None:
         render_member_forecast(selected_id, predictions)
 
-    if flagged_trades is not None:
-        member_flags = flagged_trades[flagged_trades["memberId"] == selected_id]
+    if anomaly_scores is not None:
+        member_flags = anomaly_scores[
+            (anomaly_scores["memberId"] == selected_id) & anomaly_scores["is_flagged"]
+        ]
         st.subheader(f"Flagged trades ({len(member_flags)})")
         if member_flags.empty:
             st.write("None of this member's trades were flagged.")
@@ -335,82 +339,108 @@ def render_committee_analysis():
 # Tab: Flagged trades
 # -------------------------------------------------------------------
 
-FLAG_TABLE_OPTIONAL_COLUMNS = [
-    "assetDescription", "sector_label", "amount", "flag_reasons", "sourceUrl",
-]
+def format_midpoint(amount):
+    """anomaly_scores.parquet only keeps the midpoint of the disclosed range."""
+    return "Not reported" if pd.isna(amount) else f"~${amount:,.0f}"
 
 
 def show_flag_table(flags, members):
     table = add_member_names(flags, members)
-    if "sector_label" not in table.columns:
-        table["sector_label"] = table["sector"].map(
-            lambda sector: data_loader.sector_label(sector) if isinstance(sector, str) else sector
-        )
-    if {"amountLow", "amountHigh"} <= set(table.columns):
-        table["amount"] = [
-            data_loader.format_amount_range(low, high)
-            for low, high in zip(table["amountLow"], table["amountHigh"])
-        ]
-
-    columns = ["member", "td", "ticker"] + [
-        column for column in FLAG_TABLE_OPTIONAL_COLUMNS if column in table.columns
-    ] + ["anomaly_score"]
+    table["amount"] = table["amount_mid"].map(format_midpoint)
 
     st.dataframe(
-        table[columns], hide_index=True, width="stretch",
+        table[[
+            "member", "td", "ticker", "sector_label", "flag_reasons", "anomaly_score",
+            "in_committee_jurisdiction", "action", "amount", "assetDescription", "sourceUrl",
+        ]],
+        hide_index=True, width="stretch",
         column_config={
+            "member": "Member",
             "td": st.column_config.DateColumn("Trade date"),
+            "ticker": "Ticker",
             "assetDescription": "Asset",
             "sector_label": "Sector",
-            "flag_reasons": st.column_config.TextColumn("Why it was flagged", width="large"),
+            "action": "Action",
+            "amount": "Amount (range midpoint)",
+            "in_committee_jurisdiction": st.column_config.CheckboxColumn("Committee sector"),
+            "flag_reasons": st.column_config.TextColumn("Why", width="medium"),
             "anomaly_score": st.column_config.NumberColumn("Anomaly score", format="%.2f"),
             "sourceUrl": st.column_config.LinkColumn("Filing", display_text="PDF"),
         },
     )
 
 
-def render_flagged_trades(flagged_trades, problem, members):
-    if flagged_trades is None:
-        show_missing_input(
-            problem, FLAGGED_TRADES_FILE, "the anomaly-detection branch",
-            "- required: `memberId`, `td` (trade date), `ticker`, `sector`, `anomaly_score` "
-            "(higher = more unusual)\n"
-            "- optional: `is_flagged`, `flag_reasons`, `assetDescription`, `amountLow`, "
-            "`amountHigh`, `sourceUrl`",
+def render_flagged_trades(anomaly_scores, problem, members):
+    if anomaly_scores is None:
+        st.info(
+            f"{problem}\n\nRun `python -m src.anomaly` from the project root to create "
+            f"`{ANOMALY_SCORES_FILE.relative_to(ANOMALY_SCORES_FILE.parents[2])}`."
         )
         return
 
-    flags = flagged_trades.copy()
-    flags["td"] = pd.to_datetime(flags["td"])
-    # Take party from our member table so the filter works whatever the input file has.
-    flags = flags.drop(columns=["party"], errors="ignore").merge(
+    with st.expander("How a trade gets flagged"):
+        st.markdown(
+            f"""
+- For every trade, `src/anomaly.py` estimates how likely this member was to trade in that sector,
+  using only trades **before** it: their own sector mix, blended with the House-wide mix so
+  members with little history aren't judged on a handful of trades.
+- **Anomaly score** = −log(that probability). A score of {ANOMALY_FLAG_SCORE:.0f} means about a
+  {np.exp(-ANOMALY_FLAG_SCORE):.1%} chance; higher is more unusual.
+- If the member made {ROUTINE_MIN_TRADES}+ trades in the sector in the past year, it counts as
+  routine and the score is set to 0.
+- A trade is **flagged** when its score is above {ANOMALY_FLAG_SCORE:.0f}.
+
+A flag means "worth a look", not wrongdoing.
+"""
+        )
+
+    scores = anomaly_scores.drop(columns=["party"], errors="ignore").merge(
         members[["memberId", "party"]], on="memberId", how="left"
     )
 
     filter_columns = st.columns(4)
-    only_flagged = filter_columns[0].toggle(
-        "Only trades flagged by the detector", value=True, disabled="is_flagged" not in flags.columns
+    only_flagged = filter_columns[0].toggle("Only flagged trades", value=True)
+    only_committee = filter_columns[0].toggle("Only sectors their committee oversees", value=False)
+    parties = filter_columns[1].multiselect("Party", sorted(scores["party"].dropna().unique()))
+    sectors = filter_columns[2].multiselect(
+        "Sector", sorted(scores["sector"].dropna().unique()), format_func=data_loader.sector_label
     )
-    parties = filter_columns[1].multiselect("Party", sorted(flags["party"].dropna().unique()))
-    sectors = filter_columns[2].multiselect("Sector", sorted(flags["sector"].dropna().unique()),
-                                            format_func=data_loader.sector_label)
     rows_to_show = filter_columns[3].slider("Rows to show", 10, 500, DEFAULT_FLAGS_TO_SHOW, step=10)
 
-    if only_flagged and "is_flagged" in flags.columns:
-        flags = flags[flags["is_flagged"]]
+    shown = scores
+    if only_flagged:
+        shown = shown[shown["is_flagged"]]
+    if only_committee:
+        shown = shown[shown["in_committee_jurisdiction"]]
     if parties:
-        flags = flags[flags["party"].isin(parties)]
+        shown = shown[shown["party"].isin(parties)]
     if sectors:
-        flags = flags[flags["sector"].isin(sectors)]
+        shown = shown[shown["sector"].isin(sectors)]
 
-    columns = st.columns(3)
-    columns[0].metric("Trades shown", f"{len(flags):,}")
-    columns[1].metric("Members", f"{flags['memberId'].nunique():,}")
-    if "sourceUrl" in flags.columns:
-        columns[2].metric("Filings to review", f"{flags['sourceUrl'].nunique():,}")
+    columns = st.columns(4)
+    columns[0].metric("Trades shown", f"{len(shown):,}", help=f"Out of {len(scores):,} scored trades")
+    columns[1].metric("Filings", f"{shown['sourceDocId'].nunique():,}")
+    columns[2].metric("Members", f"{shown['memberId'].nunique():,}")
+    columns[3].metric(
+        "In committee's sectors",
+        f"{shown['in_committee_jurisdiction'].mean():.0%}" if len(shown) else "–",
+    )
 
-    st.caption("Sorted by anomaly score, most unusual first. A flag means 'worth a look', not wrongdoing.")
-    show_flag_table(flags.sort_values("anomaly_score", ascending=False).head(rows_to_show), members)
+    if shown.empty:
+        st.write("No trades match these filters.")
+        return
+
+    st.subheader("Most unusual first")
+    show_flag_table(shown.sort_values("anomaly_score", ascending=False).head(rows_to_show), members)
+
+    left, _ = st.columns(2)
+    with left:
+        st.subheader("Trades by sector")
+        by_sector = shown["sector_label"].value_counts().rename("trades").reset_index().sort_values("trades")
+        st.plotly_chart(
+            horizontal_bar(by_sector, x="trades", y="sector_label", x_title="Trades", hover_format=",d"),
+            width="stretch",
+        )
 
 
 # -------------------------------------------------------------------
@@ -486,23 +516,25 @@ def main():
     trades = get_trades()
     members = get_members()
     member_activity = get_member_activity()
-    flagged_trades, flagged_problem = get_flagged_trades()
+    anomaly_scores, anomaly_problem = get_anomaly_scores()
     predictions, predictions_problem = get_model_predictions()
 
-    tabs = st.tabs([
-        "Overview", "Member profile", "Committees vs. trading", "Flagged trades", "Model performance",
-    ])
+    tab_names = ["Overview", "Member profile", "Committees vs. trading", "Flagged trades"]
+    if predictions is not None:
+        tab_names.append("Model performance")
+    tabs = st.tabs(tab_names)
 
     with tabs[0]:
         render_overview(trades, member_activity, members)
     with tabs[1]:
-        render_member_profile(trades, member_activity, members, flagged_trades, predictions)
+        render_member_profile(trades, member_activity, members, anomaly_scores, predictions)
     with tabs[2]:
         render_committee_analysis()
     with tabs[3]:
-        render_flagged_trades(flagged_trades, flagged_problem, members)
-    with tabs[4]:
-        render_model_performance(predictions, predictions_problem)
+        render_flagged_trades(anomaly_scores, anomaly_problem, members)
+    if predictions is not None:
+        with tabs[4]:
+            render_model_performance(predictions, predictions_problem)
 
 
 main()

@@ -22,11 +22,15 @@ MODEL_DATA_FILE = ROOT / "data/processed/model_data.parquet"
 # The dashboard runs without these. When a file shows up, its tab
 # turns on. See dashboard/README.md for the exact columns.
 
-# From the anomaly-detection branch: one row per scored trade.
-FLAGGED_TRADES_FILE = ROOT / "data/processed/flagged_trades.parquet"
-FLAGGED_TRADES_REQUIRED_COLUMNS = ["memberId", "td", "ticker", "sector", "anomaly_score"]
+# From src/anomaly.py (merged in PR #4): one row per trade with a sector.
+ANOMALY_SCORES_FILE = ROOT / "data/processed/anomaly_scores.parquet"
+ANOMALY_SCORES_REQUIRED_COLUMNS = [
+    "memberId", "td", "ticker", "sector",
+    "score_history", "recent_sector_trades", "anomaly_score", "flag",
+]
 
-# From model tuning: out-of-sample predictions, one row per member-window.
+# Not produced yet: out-of-sample predictions, one row per member-window.
+# The Model performance tab only appears once this file exists.
 MODEL_PREDICTIONS_FILE = ROOT / "data/processed/model_predictions.parquet"
 MODEL_PREDICTIONS_REQUIRED_COLUMNS = ["memberId", "prediction_date"]  # plus target_* and prob_*
 
@@ -38,6 +42,7 @@ PRIMARY_COLOR = "#2a78d6"     # main series
 HIGHLIGHT_COLOR = "#eb6834"   # committee-overseen sectors, flagged items
 MUTED_COLOR = "#8a8984"
 
-DEFAULT_PREDICTION_THRESHOLD = 0.5   # same as config/model_config.py THRESHOLD
+# main.py now tunes a threshold per fold; 0.5 is just the slider's starting point.
+DEFAULT_PREDICTION_THRESHOLD = 0.5
 DEFAULT_FLAGS_TO_SHOW = 50
 RECENT_TRADES_TO_SHOW = 25

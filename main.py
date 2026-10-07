@@ -19,23 +19,12 @@ from config.model_config import (
 from src.dataset import PoliPickDataset
 from src.model import PoliPickModel
 from src.splits import walk_forward_splits, split_for_tuning
-from src.train import train_model, compute_pos_weight
+from src.train import train_model, compute_pos_weight, get_device
 from src.evaluate import (
     predict_probabilities,
     choose_threshold,
     score_predictions
 )
-
-
-def get_device():
-
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-
-    return torch.device("cpu")
 
 
 def fit_and_predict(train_df, eval_df, device):

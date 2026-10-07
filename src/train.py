@@ -1,6 +1,34 @@
 import torch
 import torch.nn as nn
 
+from torch.utils.data import DataLoader
+from sklearn.preprocessing import StandardScaler
+
+from config.model_config import (
+    FEATURE_COLUMNS,
+    TARGET_COLUMNS,
+    BATCH_SIZE,
+    LEARNING_RATE,
+    WEIGHT_DECAY,
+    EPOCHS,
+    POS_WEIGHT,
+    SEED
+)
+
+from src.dataset import PoliPickDataset
+from src.model import PoliPickModel
+
+
+def get_device():
+
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+
+    return torch.device("cpu")
+
 
 def compute_pos_weight(targets, mode):
 
@@ -91,3 +119,51 @@ def train_model(
                 f"Epoch {epoch + 1}/{epochs} "
                 f"Loss: {loss:.4f}"
             )
+
+
+def fit_fold(train_df, device):
+
+    torch.manual_seed(SEED)
+
+    train_df = train_df.copy()
+
+    scaler = StandardScaler()
+
+    train_df[FEATURE_COLUMNS] = (
+        scaler.fit_transform(
+            train_df[FEATURE_COLUMNS]
+        )
+    )
+
+    train_loader = DataLoader(
+        PoliPickDataset(train_df),
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        drop_last=True
+    )
+
+    model = PoliPickModel(
+        input_size=len(FEATURE_COLUMNS),
+        num_sectors=len(TARGET_COLUMNS)
+    ).to(device)
+
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=LEARNING_RATE,
+        weight_decay=WEIGHT_DECAY
+    )
+
+    train_model(
+        model,
+        train_loader,
+        optimizer,
+        device,
+        EPOCHS,
+        pos_weight=compute_pos_weight(
+            train_df[TARGET_COLUMNS].values,
+            POS_WEIGHT
+        ),
+        verbose=False
+    )
+
+    return model, scaler

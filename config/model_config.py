@@ -67,3 +67,11 @@ TUNING_DAYS = 365
 THRESHOLD_GRID = [round(0.05 * i, 2) for i in range(1, 19)]
 
 SEED = 0
+
+ANOMALY_ALPHAS = [1.0, 2.0, 5.0, 10.0, 20.0]
+ANOMALY_TEST_START = "2023-01-01"
+# Fixed by definition, not tuned: the injection test can't judge what counts as routine.
+ROUTINE_WINDOW_DAYS = 365
+ROUTINE_MIN_TRADES = 3
+# Flag when the sector had under ~2% chance (e^-4) for that member.
+ANOMALY_FLAG_SCORE = 4.0

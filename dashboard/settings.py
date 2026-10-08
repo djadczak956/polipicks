@@ -1,4 +1,4 @@
-"""Constants for the PoliPicks dashboard: file paths, colors, and the
+"""Constants for the PoliDetect dashboard: file paths, colors, and the
 column "contracts" the dashboard expects from the other branches.
 """
 

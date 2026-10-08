@@ -1,4 +1,4 @@
-"""PoliPicks dashboard.
+"""PoliDetect dashboard.
 
 Run from the project root:
     streamlit run dashboard/app.py
@@ -37,7 +37,7 @@ from dashboard.settings import (
 )
 
 
-st.set_page_config(page_title="PoliPicks", layout="wide")
+st.set_page_config(page_title="PoliDetect", layout="wide")
 
 
 # -------------------------------------------------------------------
@@ -588,7 +588,7 @@ def render_model_performance(predictions, problem):
 # -------------------------------------------------------------------
 
 def main():
-    st.title("PoliPicks")
+    st.title("PoliDetect")
     st.caption(
         "Which sectors House members trade, whether it tracks their committees, "
         "and which disclosures break the pattern. Source: STOCK Act Periodic Transaction Reports."

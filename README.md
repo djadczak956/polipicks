@@ -1,4 +1,4 @@
-# PoliPicks
+# PoliDetect
 
 Predicts which market sectors a member of Congress will trade in the next 21 days, and flags stock-trade disclosures that don't fit the pattern.
 
@@ -8,7 +8,7 @@ CS4342 (Machine Learning) project by team PoliDetect: Vincent Grassi, Krish Pate
 
 Under the STOCK Act, members of Congress must disclose stock trades over $1,000 within 45 days. The filings are split across two portals as one-off documents, and many are scanned PDFs. That makes it hard to ask whether a member's trading tracks the jurisdiction of their committees, or to find the filings that break a member's own pattern.
 
-PoliPicks is meant for:
+PoliDetect is meant for:
 
 - **Journalists and accountability groups**: a screening tool that pulls a handful of unusual filings out of thousands of routine ones.
 - **Researchers**: a quantified answer to whether committee jurisdiction predicts trading behavior.

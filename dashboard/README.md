@@ -1,4 +1,4 @@
-# PoliPicks dashboard
+# PoliDetect dashboard
 
 Streamlit app for the three audiences in the main README: the public (member profiles), researchers (committees vs. trading), and journalists (flagged trades).
 

@@ -222,6 +222,7 @@ def render_member_profile(trades, member_activity, members, anomaly_scores, pred
 
     if predictions is not None:
         render_member_forecast(selected_id, predictions)
+        render_member_top3_match(selected_id, predictions, trades)
 
     if anomaly_scores is not None:
         member_flags = anomaly_scores[
@@ -268,6 +269,86 @@ def render_member_forecast(member_id, predictions):
     st.plotly_chart(
         horizontal_bar(forecast, x="probability", y="sector_label", x_title="Predicted probability of a trade"),
         width="stretch",
+    )
+
+
+def render_member_top3_match(member_id, predictions, trades):
+    """Compare the model's top 3 sectors to the actual next-21-day sector mix."""
+    member_rows = predictions[predictions["memberId"] == member_id]
+    if member_rows.empty:
+        return
+
+    latest = member_rows.sort_values("prediction_date").iloc[-1]
+    prediction_date = pd.Timestamp(latest["prediction_date"])
+    prediction_window_end = prediction_date + pd.Timedelta(days=21)
+
+    sectors = data_loader.prediction_sectors(predictions)
+    predicted = pd.DataFrame({
+        "sector": sectors,
+        "sector_label": [data_loader.sector_label(sector) for sector in sectors],
+        "probability": [latest[f"prob_{sector}"] for sector in sectors],
+    }).sort_values("probability", ascending=False).head(3).reset_index(drop=True)
+
+    actual_window = trades[
+        (trades["memberId"] == member_id)
+        & (trades["td"] >= prediction_date)
+        & (trades["td"] < prediction_window_end)
+    ].copy()
+
+    actual_by_sector = (
+        actual_window[actual_window["sector"].notna()]
+        .groupby("sector")["ticker"]
+        .count()
+        .reset_index(name="count")
+        .sort_values("count", ascending=False)
+        .head(3)
+        .copy()
+    )
+    actual_by_sector["sector_label"] = actual_by_sector["sector"].map(
+        lambda sector: data_loader.sector_label(sector) if sector in data_loader.SECTORS else "Unclassified"
+    )
+
+    actual_top3 = actual_by_sector[["sector_label", "count"]].reset_index(drop=True)
+    predicted_top3 = predicted[["sector_label", "probability"]].rename(columns={"probability": "probability"})
+
+    overlap = set(predicted_top3["sector_label"]) & set(actual_top3["sector_label"])
+    hit_count = len(overlap)
+
+    st.subheader("Top-3 predicted vs actual next 21-day sectors")
+    left, right = st.columns(2)
+
+    with left:
+        st.markdown("**Predicted top 3**")
+        st.dataframe(
+            predicted_top3.assign(rank=range(1, len(predicted_top3) + 1))[ ["rank", "sector_label", "probability"] ],
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "rank": "Rank",
+                "sector_label": "Sector",
+                "probability": st.column_config.NumberColumn("Probability", format="%.3f"),
+            },
+        )
+
+    with right:
+        st.markdown("**Actual next 21-day sectors**")
+        if actual_top3.empty:
+            st.info("No trades were disclosed in the next 21-day window for this member.")
+        else:
+            st.dataframe(
+                actual_top3.assign(rank=range(1, len(actual_top3) + 1))[["rank", "sector_label", "count"]],
+                hide_index=True,
+                width="stretch",
+                column_config={
+                    "rank": "Rank",
+                    "sector_label": "Sector",
+                    "count": "Trade count",
+                },
+            )
+
+    st.caption(
+        f"Top-3 overlap: {hit_count}/3 sectors matched. "
+        f"Actual window: {prediction_date:%Y-%m-%d} to {prediction_window_end:%Y-%m-%d}."
     )
 
 

@@ -194,6 +194,10 @@ def render_member_profile(trades, member_activity, members, anomaly_scores, pred
         committees = ", ".join(member["committees"]) or "No committees matched"
         st.markdown(f"**Committees ({int(member['congress'])}th Congress):** {committees}")
 
+    if predictions is not None:
+        render_member_forecast(selected_id, predictions)
+        render_member_top3_match(selected_id, predictions, trades)
+
     left, right = st.columns(2)
 
     with left:
@@ -219,10 +223,6 @@ def render_member_profile(trades, member_activity, members, anomaly_scores, pred
         figure.update_traces(hovertemplate="%{x}: %{y:,} trades<extra></extra>")
         figure.update_layout(xaxis_title=None, yaxis_title="Trades", margin=dict(l=0, r=0, t=10, b=0), height=380)
         st.plotly_chart(figure, width="stretch")
-
-    if predictions is not None:
-        render_member_forecast(selected_id, predictions)
-        render_member_top3_match(selected_id, predictions, trades)
 
     if anomaly_scores is not None:
         member_flags = anomaly_scores[
